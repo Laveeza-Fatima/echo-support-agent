@@ -1,0 +1,80 @@
+{
+  "name": "Echo 01 · Teach Echo (upload documents)",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Teach Echo",
+        "formDescription": "Upload your FAQs, policies, product sheets or manuals. Echo will read them and answer customers from them.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Documents",
+              "fieldType": "file",
+              "multipleFiles": true,
+              "acceptFileTypes": ".pdf,.txt,.md,.docx,.csv",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e1000000-0000-4000-8000-000000000001",
+      "name": "Upload form",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [0, 0],
+      "webhookId": "e1000000-0000-4000-8000-0000000000a1"
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "tableName": { "__rl": true, "value": "documents", "mode": "list", "cachedResultName": "documents" },
+        "options": { "queryName": "match_documents" }
+      },
+      "id": "e1000000-0000-4000-8000-000000000002",
+      "name": "Save to knowledge base",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreSupabase",
+      "typeVersion": 1.1,
+      "position": [300, 0]
+    },
+    {
+      "parameters": { "modelName": "models/text-embedding-004" },
+      "id": "e1000000-0000-4000-8000-000000000003",
+      "name": "Gemini Embeddings",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsGoogleGemini",
+      "typeVersion": 1,
+      "position": [220, 240]
+    },
+    {
+      "parameters": {
+        "dataType": "binary",
+        "options": {
+          "metadata": { "metadataValues": [ { "name": "source", "value": "uploaded-document" } ] }
+        }
+      },
+      "id": "e1000000-0000-4000-8000-000000000004",
+      "name": "Read files",
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "typeVersion": 1,
+      "position": [400, 240]
+    },
+    {
+      "parameters": { "chunkSize": 800, "chunkOverlap": 120, "options": {} },
+      "id": "e1000000-0000-4000-8000-000000000005",
+      "name": "Split into chunks",
+      "type": "@n8n/n8n-nodes-langchain.textSplitterRecursiveCharacterTextSplitter",
+      "typeVersion": 1,
+      "position": [480, 440]
+    }
+  ],
+  "connections": {
+    "Upload form": { "main": [[{ "node": "Save to knowledge base", "type": "main", "index": 0 }]] },
+    "Gemini Embeddings": { "ai_embedding": [[{ "node": "Save to knowledge base", "type": "ai_embedding", "index": 0 }]] },
+    "Read files": { "ai_document": [[{ "node": "Save to knowledge base", "type": "ai_document", "index": 0 }]] },
+    "Split into chunks": { "ai_textSplitter": [[{ "node": "Read files", "type": "ai_textSplitter", "index": 0 }]] }
+  },
+  "pinData": {},
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "tags": []
+}

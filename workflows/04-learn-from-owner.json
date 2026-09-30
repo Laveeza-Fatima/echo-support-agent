@@ -1,0 +1,144 @@
+{
+  "name": "Echo 04 · Learn from the owner's WhatsApp reply",
+  "nodes": [
+    {
+      "parameters": { "updates": ["messages"] },
+      "id": "e4000000-0000-4000-8000-000000000001",
+      "name": "Owner replies on WhatsApp",
+      "type": "n8n-nodes-base.whatsAppTrigger",
+      "typeVersion": 1,
+      "position": [0, 0],
+      "webhookId": "e4000000-0000-4000-8000-0000000000a1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose", "version": 2 },
+          "conditions": [
+            {
+              "id": "e4000000-0000-4000-8000-0000000000c1",
+              "leftValue": "={{ $json.messages && $json.messages[0].context ? $json.messages[0].context.id : '' }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEmpty", "singleValue": true }
+            },
+            {
+              "id": "e4000000-0000-4000-8000-0000000000c2",
+              "leftValue": "={{ $json.messages && $json.messages[0].text ? $json.messages[0].text.body : '' }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEmpty", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "e4000000-0000-4000-8000-000000000002",
+      "name": "Is it a reply?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [240, 0]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "knowledge_gaps",
+        "limit": 1,
+        "filterType": "manual",
+        "filters": {
+          "conditions": [
+            { "keyName": "wa_message_id", "condition": "eq", "keyValue": "={{ $json.messages[0].context.id }}" },
+            { "keyName": "status", "condition": "eq", "keyValue": "open" }
+          ]
+        }
+      },
+      "id": "e4000000-0000-4000-8000-000000000003",
+      "name": "Find the question",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [480, -20]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "knowledge_gaps",
+        "filterType": "manual",
+        "filters": {
+          "conditions": [ { "keyName": "id", "condition": "eq", "keyValue": "={{ $json.id }}" } ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            { "fieldId": "status", "fieldValue": "answered" },
+            { "fieldId": "answer", "fieldValue": "={{ $('Owner replies on WhatsApp').item.json.messages[0].text.body }}" },
+            { "fieldId": "answered_at", "fieldValue": "={{ $now.toISO() }}" }
+          ]
+        }
+      },
+      "id": "e4000000-0000-4000-8000-000000000004",
+      "name": "Close the question",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [720, -20]
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "tableName": { "__rl": true, "value": "documents", "mode": "list", "cachedResultName": "documents" },
+        "options": { "queryName": "match_documents" }
+      },
+      "id": "e4000000-0000-4000-8000-000000000005",
+      "name": "Add answer to knowledge base",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreSupabase",
+      "typeVersion": 1.1,
+      "position": [960, -20]
+    },
+    {
+      "parameters": { "modelName": "models/text-embedding-004" },
+      "id": "e4000000-0000-4000-8000-000000000006",
+      "name": "Gemini Embeddings",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsGoogleGemini",
+      "typeVersion": 1,
+      "position": [880, 220]
+    },
+    {
+      "parameters": {
+        "jsonMode": "expressionData",
+        "jsonData": "={{ 'Customer question: ' + $('Find the question').item.json.question + '\\nAnswer from the team: ' + $('Owner replies on WhatsApp').item.json.messages[0].text.body }}",
+        "options": {
+          "metadata": { "metadataValues": [ { "name": "source", "value": "taught-by-owner" } ] }
+        }
+      },
+      "id": "e4000000-0000-4000-8000-000000000007",
+      "name": "Format as knowledge",
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "typeVersion": 1,
+      "position": [1060, 220]
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "phoneNumberId": "YOUR_WHATSAPP_PHONE_NUMBER_ID",
+        "recipientPhoneNumber": "={{ $('Owner replies on WhatsApp').item.json.messages[0].from }}",
+        "textBody": "=✅ Learned! Next time a customer asks \"{{ $('Find the question').item.json.question }}\", Echo will answer it instantly.",
+        "additionalFields": {}
+      },
+      "id": "e4000000-0000-4000-8000-000000000008",
+      "name": "Confirm to owner",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1,
+      "position": [1200, -20]
+    }
+  ],
+  "connections": {
+    "Owner replies on WhatsApp": { "main": [[{ "node": "Is it a reply?", "type": "main", "index": 0 }]] },
+    "Is it a reply?": { "main": [[{ "node": "Find the question", "type": "main", "index": 0 }], []] },
+    "Find the question": { "main": [[{ "node": "Close the question", "type": "main", "index": 0 }]] },
+    "Close the question": { "main": [[{ "node": "Add answer to knowledge base", "type": "main", "index": 0 }]] },
+    "Add answer to knowledge base": { "main": [[{ "node": "Confirm to owner", "type": "main", "index": 0 }]] },
+    "Gemini Embeddings": { "ai_embedding": [[{ "node": "Add answer to knowledge base", "type": "ai_embedding", "index": 0 }]] },
+    "Format as knowledge": { "ai_document": [[{ "node": "Add answer to knowledge base", "type": "ai_document", "index": 0 }]] }
+  },
+  "pinData": {},
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "tags": []
+}

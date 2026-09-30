@@ -1,0 +1,93 @@
+{
+  "name": "Echo 03 · Escalate to owner (WhatsApp)",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "workflowInputs",
+        "workflowInputs": { "values": [ { "name": "question" }, { "name": "customer_ref" } ] }
+      },
+      "id": "e3000000-0000-4000-8000-000000000001",
+      "name": "Called by ask_the_team",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "tableId": "knowledge_gaps",
+        "fieldsUi": {
+          "fieldValues": [
+            { "fieldId": "question", "fieldValue": "={{ $json.question }}" },
+            { "fieldId": "customer_ref", "fieldValue": "={{ $json.customer_ref }}" }
+          ]
+        }
+      },
+      "id": "e3000000-0000-4000-8000-000000000002",
+      "name": "Add to learning queue",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [240, 0]
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "phoneNumberId": "YOUR_WHATSAPP_PHONE_NUMBER_ID",
+        "recipientPhoneNumber": "OWNER_WHATSAPP_NUMBER_WITH_COUNTRY_CODE",
+        "textBody": "=❓ New customer question\n\n\"{{ $json.question }}\"\n\nSwipe to reply to this message with the answer. Echo will learn it.",
+        "additionalFields": {}
+      },
+      "id": "e3000000-0000-4000-8000-000000000003",
+      "name": "Ask owner on WhatsApp",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1,
+      "position": [480, 0]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "knowledge_gaps",
+        "filterType": "manual",
+        "filters": {
+          "conditions": [
+            { "keyName": "id", "condition": "eq", "keyValue": "={{ $('Add to learning queue').item.json.id }}" }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            { "fieldId": "wa_message_id", "fieldValue": "={{ $json.messages[0].id }}" }
+          ]
+        }
+      },
+      "id": "e3000000-0000-4000-8000-000000000004",
+      "name": "Remember WhatsApp message id",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [720, 0]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "e3000000-0000-4000-8000-0000000000b1", "name": "response", "value": "Question sent to the team. Tell the customer they'll hear back shortly.", "type": "string" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e3000000-0000-4000-8000-000000000005",
+      "name": "Tell the agent it worked",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [960, 0]
+    }
+  ],
+  "connections": {
+    "Called by ask_the_team": { "main": [[{ "node": "Add to learning queue", "type": "main", "index": 0 }]] },
+    "Add to learning queue": { "main": [[{ "node": "Ask owner on WhatsApp", "type": "main", "index": 0 }]] },
+    "Ask owner on WhatsApp": { "main": [[{ "node": "Remember WhatsApp message id", "type": "main", "index": 0 }]] },
+    "Remember WhatsApp message id": { "main": [[{ "node": "Tell the agent it worked", "type": "main", "index": 0 }]] }
+  },
+  "pinData": {},
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "tags": []
+}

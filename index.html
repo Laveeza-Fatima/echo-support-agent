@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Echo Support Agent</title>
+<meta name="description" content="Echo: the AI support agent that learns from your team. Answers from your documents, asks the owner when unsure, and never forgets the answer. By Laveeza Fatima.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* Layout: a live "learning loop" — customer phone | Echo's brain | owner's phone — with the story controls on top. */
+  :root {
+    --bg: #eaedf2;            /* cool paper */
+    --panel: #ffffff;
+    --ink: #0d1726;
+    --muted: #5b6678;
+    --line: #d5dae3;
+    --agent: #2446d8;         /* Echo cobalt */
+    --agent-soft: #e5eaff;
+    --owner: #128c5e;         /* the human in the loop (WhatsApp) */
+    --owner-soft: #e1f5ea;
+    --learn: #b45309;         /* newly learned knowledge */
+    --learn-soft: #fdf0dc;
+    --bubble: #f0f2f6;
+    --sans: "Schibsted Grotesk", "Segoe UI", system-ui, sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0e1117; --panel: #161a22; --ink: #e8ebf1; --muted: #98a1b2; --line: #282e3a;
+      --agent: #7d95ff; --agent-soft: #1d2748; --owner: #3ddc97; --owner-soft: #123326;
+      --learn: #f5b454; --learn-soft: #3a2a12; --bubble: #1f2430; color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--sans); line-height: 1.5; }
+  .page { max-width: 1320px; margin: 0 auto; padding-inline: clamp(16px, 3vw, 36px); padding-block: clamp(24px, 4vw, 48px); display: grid; gap: 24px; }
+
+  /* Header */
+  .top { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 24px; align-items: end; }
+  .eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--agent); }
+  h1 { font-size: clamp(36px, 5vw, 60px); line-height: 1; letter-spacing: -0.035em; font-weight: 800; margin: 10px 0 12px; text-wrap: balance; }
+  h1 em { font-style: normal; color: var(--learn); }
+  .lede { color: var(--muted); font-size: 17px; margin: 0; max-width: 58ch; }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; }
+  .btn { font: 600 14px var(--sans); border-radius: 12px; padding: 11px 16px; cursor: pointer; border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
+  .btn.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .btn:focus-visible, button:focus-visible, input:focus-visible { outline: 2px solid var(--agent); outline-offset: 2px; }
+
+  .metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); background: var(--panel); border: 1px solid var(--line); border-radius: 16px; }
+  .metric { padding: 14px 18px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .metric + .metric { border-left: 1px solid var(--line); }
+  .metric strong { font-size: 28px; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; transition: color .4s; }
+  .metric span { font-size: 13px; color: var(--muted); }
+  .metric.flash strong { color: var(--learn); }
+
+  /* Three-column loop */
+  .loop { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr) minmax(0, 1fr); gap: 18px; align-items: stretch; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 22px; display: flex; flex-direction: column; min-height: 600px; max-height: 680px; overflow: hidden; min-width: 0; }
+  .panel-head { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+  .dot { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: #fff; font-weight: 800; flex: none; }
+  .panel-head b { display: block; font-size: 15px; }
+  .panel-head small { color: var(--muted); font-size: 12px; }
+  .panel-head .grow { flex: 1; min-width: 0; }
+  .tag { font-family: var(--mono); font-size: 11px; padding: 3px 8px; border-radius: 6px; white-space: nowrap; }
+
+  .log { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 9px; }
+  .msg { max-width: 86%; padding: 9px 13px; border-radius: 15px; font-size: 14.5px; white-space: pre-line; animation: in .25s ease-out; }
+  .msg.them { background: var(--bubble); align-self: flex-start; border-bottom-left-radius: 5px; }
+  .msg.me { align-self: flex-end; color: #fff; border-bottom-right-radius: 5px; }
+  .customer .msg.me { background: var(--agent); }
+  .owner .msg.me { background: var(--owner); }
+  .src { align-self: flex-start; font-family: var(--mono); font-size: 11px; color: var(--muted); margin: -4px 0 2px 4px; }
+  .src.learned { color: var(--learn); }
+  .notice { align-self: center; font-family: var(--mono); font-size: 11px; color: var(--muted); padding: 4px 10px; border: 1px dashed var(--line); border-radius: 999px; }
+  .ask { background: var(--owner-soft); border: 1px solid color-mix(in srgb, var(--owner) 35%, transparent); color: var(--ink); align-self: flex-start; max-width: 92%; padding: 10px 13px; border-radius: 14px; font-size: 14px; animation: in .25s ease-out; }
+  .ask b { color: var(--owner); display: block; font-size: 12px; font-family: var(--mono); font-weight: 500; margin-bottom: 3px; }
+  .ask.done { opacity: .6; }
+  .typing { align-self: flex-start; display: flex; gap: 4px; padding: 11px 13px; background: var(--bubble); border-radius: 15px; }
+  .typing i { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); animation: blink 1s infinite; }
+  .typing i:nth-child(2) { animation-delay: .15s; } .typing i:nth-child(3) { animation-delay: .3s; }
+
+  form { display: flex; gap: 8px; padding: 12px; border-top: 1px solid var(--line); }
+  form input { flex: 1; min-width: 0; font: 14.5px var(--sans); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 11px; padding: 10px 12px; }
+  form button { font: 600 14px var(--sans); color: #fff; border: 0; border-radius: 11px; padding: 0 14px; cursor: pointer; }
+  .customer form button { background: var(--agent); }
+  .owner form button { background: var(--owner); }
+  form input:disabled, form button:disabled { opacity: .5; cursor: not-allowed; }
+  .hint { padding: 0 16px 10px; font-size: 12px; color: var(--muted); }
+
+  /* Brain */
+  .brain .log { gap: 14px; }
+  .section-title { font-family: var(--mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); display: flex; justify-content: space-between; }
+  .kb { display: grid; gap: 6px; }
+  .kb-item { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: start; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; font-size: 13px; }
+  .kb-item .ic { font-family: var(--mono); font-size: 10.5px; padding: 2px 6px; border-radius: 5px; background: var(--agent-soft); color: var(--agent); white-space: nowrap; }
+  .kb-item.learned { border-color: var(--learn); background: var(--learn-soft); animation: glow 1.8s ease-out; }
+  .kb-item.learned .ic { background: var(--learn); color: #fff; }
+  .kb-item.hit { border-color: var(--agent); box-shadow: 0 0 0 2px var(--agent-soft); }
+  .gaps { display: grid; gap: 6px; }
+  .gap { font-size: 13px; padding: 8px 10px; border-radius: 10px; background: var(--owner-soft); display: flex; gap: 8px; align-items: baseline; }
+  .gap.closed { background: var(--learn-soft); text-decoration: line-through; color: var(--muted); }
+  .gap .st { font-family: var(--mono); font-size: 10.5px; color: var(--owner); white-space: nowrap; }
+  .gap.closed .st { color: var(--learn); }
+  .empty { font-size: 13px; color: var(--muted); }
+  .trace { font-family: var(--mono); font-size: 11.5px; display: grid; gap: 4px; color: var(--muted); }
+  .trace div { animation: in .2s ease-out; overflow-wrap: anywhere; }
+  .trace .ok { color: var(--agent); } .trace .miss { color: var(--owner); } .trace .learn { color: var(--learn); }
+
+  .note { font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 6px 16px; justify-content: space-between; }
+  .note a { color: var(--ink); font-weight: 600; }
+
+  @keyframes in { from { opacity: 0; transform: translateY(6px); } }
+  @keyframes blink { 50% { opacity: .3; } }
+  @keyframes glow { 0% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--learn) 40%, transparent); } 100% { box-shadow: 0 0 0 0 transparent; } }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+  @media (max-width: 1100px) {
+    .loop { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+    .brain { grid-column: 1 / -1; order: 3; min-height: 0; max-height: none; }
+  }
+  @media (max-width: 760px) {
+    .top { grid-template-columns: 1fr; } .controls { justify-content: flex-start; }
+    .loop { grid-template-columns: 1fr; }
+    .panel { min-height: 460px; max-height: 560px; }
+    .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .metric:nth-child(3) { border-left: 0; }
+    .metric:nth-child(n+3) { border-top: 1px solid var(--line); }
+  }
+</style>
+</head>
+<body>
+<main class="page">
+  <header class="top">
+    <div>
+      <div class="eyebrow">AI support agent · human-in-the-loop · RAG</div>
+      <h1>Echo, the support agent that <em>learns</em> from your team</h1>
+      <p class="lede">Echo answers customers from your own documents. When it isn't sure, it never guesses: it asks the owner on WhatsApp, and the reply becomes permanent knowledge. Every unanswered question makes it smarter.</p>
+    </div>
+    <div class="controls">
+      <button class="btn primary" id="play" type="button">▶ Play the 40-second story</button>
+      <button class="btn" id="reset" type="button">Reset</button>
+    </div>
+  </header>
+
+  <section class="metrics" aria-label="Live metrics">
+    <div class="metric"><strong id="mKb">6</strong><span>Knowledge items</span></div>
+    <div class="metric" id="mLearnedBox"><strong id="mLearned">0</strong><span>Learned from the team</span></div>
+    <div class="metric" id="mRateBox"><strong id="mRate">78%</strong><span>Answered without a human</span></div>
+    <div class="metric"><strong id="mOpen">0</strong><span>Waiting for the owner</span></div>
+  </section>
+
+  <section class="loop">
+    <!-- Customer -->
+    <div class="panel customer" aria-label="Customer chat">
+      <div class="panel-head">
+        <div class="dot" style="background:var(--agent)">E</div>
+        <div class="grow"><b>Noor Skin · Support</b><small id="custLabel">Customer #1 · online store</small></div>
+        <button class="btn" id="newCust" type="button" style="padding:6px 10px;font-size:12px">New customer</button>
+      </div>
+      <div class="log" id="custLog" aria-live="polite"></div>
+      <form id="custForm" autocomplete="off">
+        <label for="custInput" style="position:absolute;left:-9999px">Message as a customer</label>
+        <input id="custInput" placeholder="Ask as a customer…" maxlength="300">
+        <button type="submit">Send</button>
+      </form>
+      <div class="hint">Try: "Do you deliver to Karachi?" or something the store never documented.</div>
+    </div>
+
+    <!-- Brain -->
+    <div class="panel brain" aria-label="Echo's knowledge">
+      <div class="panel-head">
+        <div class="dot" style="background:var(--ink);color:var(--bg)">◎</div>
+        <div class="grow"><b>Echo's brain</b><small>Supabase vector store · learning queue</small></div>
+        <span class="tag" style="background:var(--learn-soft);color:var(--learn)">self-improving</span>
+      </div>
+      <div class="log">
+        <div class="section-title"><span>Agent trace</span></div>
+        <div class="trace" id="trace"><div>Waiting for a customer…</div></div>
+        <div class="section-title"><span>Learning queue</span><span id="gapCount">0 open</span></div>
+        <div class="gaps" id="gaps"><div class="empty">No unanswered questions. 🎉</div></div>
+        <div class="section-title"><span>Knowledge base</span><span id="kbCount">6 items</span></div>
+        <div class="kb" id="kb"></div>
+      </div>
+    </div>
+
+    <!-- Owner -->
+    <div class="panel owner" aria-label="Owner's WhatsApp">
+      <div class="panel-head">
+        <div class="dot" style="background:var(--owner)">S</div>
+        <div class="grow"><b>Sana (store owner)</b><small>WhatsApp · Echo</small></div>
+        <span class="tag" style="background:var(--owner-soft);color:var(--owner)">human in the loop</span>
+      </div>
+      <div class="log" id="ownerLog" aria-live="polite">
+        <div class="notice">Echo pings Sana only when it doesn't know</div>
+      </div>
+      <form id="ownerForm" autocomplete="off">
+        <label for="ownerInput" style="position:absolute;left:-9999px">Reply as the owner</label>
+        <input id="ownerInput" placeholder="No questions waiting" maxlength="400" disabled>
+        <button type="submit" id="ownerSend" disabled>Teach</button>
+      </form>
+      <div class="hint">When a question arrives, answer it here. Echo learns it instantly.</div>
+    </div>
+  </section>
+
+  <p class="note">
+    <span>Interactive demo: runs in your browser with a lightweight matcher. The production version uses Gemini, vector search in Supabase and the WhatsApp Cloud API (see the repo's <code>workflows/</code>).</span>
+    <span>Built by <a href="https://laveeza-fatima.github.io" target="_blank" rel="noopener">Laveeza Fatima</a> · <a href="https://github.com/Laveeza-Fatima/echo-support-agent" target="_blank" rel="noopener">Source</a></span>
+  </p>
+</main>
+
+<script>
+(() => {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  let FAST = false;
+  const t = (ms) => (FAST ? Math.min(ms, 40) : ms);
+
+  /* ---------- Knowledge (mirrors what the store uploaded via workflow 01) ---------- */
+  const SEED = [
+    { src: "shipping-policy.pdf", q: "Delivery times and cities", a: "We deliver across Pakistan in 2–4 working days (Lahore, Karachi and Islamabad usually take 2). Shipping is free on orders over PKR 3,000.", kw: "ship deliver delivery day long lahore karachi islamabad city courier arrive free shipping" },
+    { src: "returns-policy.pdf", q: "Returns and refunds", a: "Unopened products can be returned within 7 days for a full refund. Damaged or wrong items are replaced for free. Just send us a photo.", kw: "return refund exchange damage wrong broken money back" },
+    { src: "faq.md", q: "Payment methods", a: "You can pay Cash on Delivery, by card, or with JazzCash / Easypaisa.", kw: "pay payment cash cod card jazzcash easypaisa method" },
+    { src: "vitamin-c-sheet.pdf", q: "Vitamin C serum ingredients", a: "Our Vitamin C Glow Serum has 10% ascorbic acid, hyaluronic acid and vitamin E. It's fragrance-free and comes in a 30 ml bottle.", kw: "vitamin serum ingredient contain made fragrance size ml" },
+    { src: "vitamin-c-sheet.pdf", q: "Skin types", a: "The Vitamin C serum suits all skin types. If your skin is sensitive, start by using it every other evening.", kw: "skin type oily dry sensitive acne combination suit" },
+    { src: "faq.md", q: "Order tracking", a: "You'll get a tracking link by SMS as soon as your order ships. You can also track it any time at noorskin.pk/track.", kw: "track tracking order status where parcel" },
+  ];
+  const STOP = new Set("a an the is are am was be to of in on for and or but with at by from it its this that these those i me my we our you your u do does did can could would will shall should may might have has had how what whats when where which who why please hi hello hey salam thanks thank ok okay tell about any there get use using take takes much many also just need want like know is? im i'm yes no so".split(" "));
+  const SYN = { pregnant: "pregnancy", pregnancy: "pregnancy", breastfeeding: "pregnancy", shipping: "ship", shipped: "ship", ships: "ship", delivered: "deliver", deliveries: "delivery", refunds: "refund", returns: "return", returned: "return", ingredients: "ingredient", contains: "contain", paying: "pay", payments: "payment", days: "day", cities: "city", women: "", woman: "", mothers: "", mom: "" };
+  const words = (s) => s.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/)
+    .map((w) => (w in SYN ? SYN[w] : w.length > 4 && w.endsWith("s") ? w.slice(0, -1) : w))
+    .filter((w) => w && w.length > 1 && !STOP.has(w));
+
+  /* ---------- State ---------- */
+  let kb, gaps, stats, customer, busy, storyRunning, pendingFor;
+  function init() {
+    kb = SEED.map((e) => ({ ...e, keys: new Set(words(e.kw + " " + e.q)), learned: false }));
+    gaps = []; stats = { answered: 39, total: 50, learned: 0 }; customer = 1; busy = false; pendingFor = null;
+    $("custLog").innerHTML = ""; $("ownerLog").innerHTML = '<div class="notice">Echo pings Sana only when it doesn\'t know</div>';
+    $("trace").innerHTML = "<div>Waiting for a customer…</div>";
+    $("custLabel").textContent = "Customer #1 · online store";
+    bubble("custLog", "them", "Hi! I'm Echo, Noor Skin's assistant. Ask me anything about orders, delivery, returns or our products.");
+    render();
+  }
+
+  /* ---------- Rendering ---------- */
+  function bubble(logId, who, text, cls = "msg") {
+    const el = document.createElement("div"); el.className = `${cls} ${who}`; el.textContent = text;
+    const log = $(logId); log.appendChild(el); log.scrollTop = log.scrollHeight; return el;
+  }
+  function note(logId, text, cls) {
+    const el = document.createElement("div"); el.className = cls; el.textContent = text;
+    const log = $(logId); log.appendChild(el); log.scrollTop = log.scrollHeight; return el;
+  }
+  function trace(text, cls = "") {
+    const box = $("trace"); if (box.children.length === 1 && box.firstChild.textContent.startsWith("Waiting")) box.innerHTML = "";
+    const el = document.createElement("div"); el.className = cls; el.textContent = text; box.appendChild(el);
+    while (box.children.length > 7) box.removeChild(box.firstChild);
+  }
+  function render(hit) {
+    const list = $("kb"); list.innerHTML = "";
+    [...kb].reverse().forEach((e) => {
+      const el = document.createElement("div");
+      el.className = "kb-item" + (e.learned ? " learned" : "") + (hit === e ? " hit" : "");
+      el.innerHTML = `<span class="ic"></span><span></span>`;
+      el.firstChild.textContent = e.learned ? "taught by Sana" : e.src;
+      el.lastChild.textContent = e.q;
+      list.appendChild(el);
+    });
+    const g = $("gaps"); g.innerHTML = "";
+    if (!gaps.length) g.innerHTML = '<div class="empty">No unanswered questions. 🎉</div>';
+    gaps.forEach((x) => { const el = document.createElement("div"); el.className = "gap" + (x.open ? "" : " closed");
+      el.innerHTML = `<span class="st"></span><span></span>`; el.firstChild.textContent = x.open ? "OPEN" : "LEARNED"; el.lastChild.textContent = x.q; g.appendChild(el); });
+    const open = gaps.filter((x) => x.open).length;
+    $("gapCount").textContent = `${open} open`; $("kbCount").textContent = `${kb.length} items`;
+    $("mKb").textContent = kb.length; $("mLearned").textContent = stats.learned; $("mOpen").textContent = open;
+    $("mRate").textContent = Math.round((stats.answered / stats.total) * 100) + "%";
+    const ownerOn = open > 0 && !storyRunning;
+    $("ownerInput").disabled = !ownerOn; $("ownerSend").disabled = !ownerOn;
+    $("ownerInput").placeholder = open ? "Reply to teach Echo…" : "No questions waiting";
+  }
+  const flash = (id) => { const el = $(id); el.classList.add("flash"); setTimeout(() => el.classList.remove("flash"), 1800); };
+
+  /* ---------- Agent ---------- */
+  function search(question) {
+    const q = words(question); if (!q.length) return { entry: null, score: 0, q };
+    let best = null, score = 0;
+    for (const e of kb) { const s = q.filter((w) => e.keys.has(w)).length / q.length; if (s > score) { score = s; best = e; } }
+    return { entry: best, score, q };
+  }
+  async function customerSays(text) {
+    if (!text.trim() || busy) return; busy = true;
+    bubble("custLog", "me", text);
+    const typing = note("custLog", "", "typing"); typing.innerHTML = "<i></i><i></i><i></i>";
+    await wait(t(500));
+    const { entry, score } = search(text);
+    stats.total++;
+    trace(`search_knowledge("${text.slice(0, 48)}${text.length > 48 ? "…" : ""}")`);
+    await wait(t(350));
+    typing.remove();
+    if (entry && score >= 0.6) {
+      stats.answered++;
+      trace(`→ match ${score.toFixed(2)} · ${entry.learned ? "taught by Sana" : entry.src}`, "ok");
+      bubble("custLog", "them", entry.a);
+      note("custLog", entry.learned ? `✓ learned from the team ${entry.when}` : `source · ${entry.src}`, entry.learned ? "src learned" : "src");
+      render(entry);
+    } else if (/^(hi|hello|hey|salam|assalam|aoa)\b/i.test(text.trim()) && words(text).length === 0) {
+      stats.total--; bubble("custLog", "them", "Hi! How can I help you today?"); render();
+    } else {
+      trace(`→ best match ${score.toFixed(2)} < 0.60 · not confident`, "miss");
+      trace(`ask_the_team() → learning queue + WhatsApp to owner`, "miss");
+      bubble("custLog", "them", "Good question! I don't want to guess, so I've asked our team. I'll message you here as soon as they reply.");
+      const gap = { q: text.trim(), open: true, customer };
+      gaps.push(gap); pendingFor = gap;
+      await wait(t(500));
+      const ask = document.createElement("div"); ask.className = "ask";
+      ask.innerHTML = "<b>❓ New customer question</b><span></span>"; ask.lastChild.textContent = `"${gap.q}"\n\nSwipe to reply with the answer. Echo will learn it.`;
+      ask.lastChild.style.whiteSpace = "pre-line"; $("ownerLog").appendChild(ask); $("ownerLog").scrollTop = 1e6; gap.el = ask;
+      render();
+    }
+    busy = false;
+  }
+  async function ownerTeaches(answer) {
+    const gap = gaps.find((x) => x.open); if (!gap || !answer.trim()) return;
+    bubble("ownerLog", "me", answer);
+    await wait(t(400));
+    trace(`owner reply → embed → documents.insert()`, "learn");
+    const entry = { src: "owner", q: gap.q, a: answer.trim(), keys: new Set(words(gap.q)), learned: true, when: "just now" };
+    kb.push(entry); gap.open = false; gap.el.classList.add("done"); stats.learned++; stats.answered++;
+    render(); flash("mLearnedBox"); flash("mRateBox");
+    note("ownerLog", "✅ Learned! Echo will answer this instantly next time.", "notice");
+    setTimeout(() => { entry.when = "a moment ago"; }, 8000);
+    if (gap.customer === customer) {
+      await wait(t(600));
+      bubble("custLog", "them", `Update from the team: ${answer.trim()}`);
+      note("custLog", "✓ answered by Sana, now part of Echo's knowledge", "src learned");
+    }
+  }
+
+  /* ---------- Wiring ---------- */
+  $("custForm").addEventListener("submit", (e) => { e.preventDefault(); const v = $("custInput").value; $("custInput").value = ""; customerSays(v); });
+  $("ownerForm").addEventListener("submit", (e) => { e.preventDefault(); const v = $("ownerInput").value; $("ownerInput").value = ""; ownerTeaches(v); });
+  $("newCust").addEventListener("click", () => {
+    customer++; $("custLabel").textContent = `Customer #${customer} · online store`; $("custLog").innerHTML = "";
+    bubble("custLog", "them", "Hi! I'm Echo, Noor Skin's assistant. How can I help?");
+  });
+  $("reset").addEventListener("click", () => { if (!storyRunning) init(); });
+
+  async function typeInto(input, text) {
+    input.focus({ preventScroll: true });
+    for (const ch of text) { input.value += ch; await wait(t(22)); }
+    await wait(t(250));
+  }
+  async function story() {
+    if (storyRunning) return; storyRunning = true; $("play").disabled = true; init(); storyRunning = true; render();
+    const ci = $("custInput"), oi = $("ownerInput");
+    await wait(t(600));
+    await typeInto(ci, "Do you deliver to Lahore? How long does it take?"); ci.value = ""; await customerSays("Do you deliver to Lahore? How long does it take?");
+    await wait(t(1400));
+    await typeInto(ci, "Is the vitamin C serum safe during pregnancy?"); ci.value = ""; await customerSays("Is the vitamin C serum safe during pregnancy?");
+    await wait(t(1600));
+    const ans = "Yes. It's fragrance-free with 10% vitamin C, which is generally considered pregnancy-safe, but we always suggest checking with your doctor first.";
+    oi.disabled = false; await typeInto(oi, ans); oi.value = ""; await ownerTeaches(ans);
+    await wait(t(2200));
+    $("newCust").click(); await wait(t(700));
+    await typeInto(ci, "can pregnant women use your vitamin c serum??"); ci.value = ""; await customerSays("can pregnant women use your vitamin c serum??");
+    storyRunning = false; $("play").disabled = false; render();
+  }
+  $("play").addEventListener("click", story);
+
+  init();
+  if (new URLSearchParams(location.search).has("autoplay")) { FAST = true; story(); }
+})();
+</script>
+</body>
+</html>
